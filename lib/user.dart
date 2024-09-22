@@ -1,4 +1,5 @@
 class User{
+  //user class
   String name = '';
    String phone = '';
     String email = '';
