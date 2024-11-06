@@ -9,7 +9,7 @@ class TabBarScreen extends StatelessWidget {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          backgroundColor: Color.fromARGB(255, 95, 118, 153),
+          backgroundColor: const Color.fromARGB(255, 95, 118, 153),
           centerTitle: true,
           title: const Text(
             "Flutter App",
@@ -28,7 +28,7 @@ class TabBarScreen extends StatelessWidget {
         body: TabBarView(children: [
           Container(color: Colors.amber,),
           Container(color: const Color.fromARGB(255, 35, 31, 18),),
-          Container(color: Color.fromARGB(255, 4, 207, 96),),
+          Container(color: const Color.fromARGB(255, 4, 207, 96),),
           
         ],),
       

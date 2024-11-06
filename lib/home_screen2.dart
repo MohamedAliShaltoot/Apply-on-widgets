@@ -32,6 +32,7 @@ class MyhomePage extends StatelessWidget {
               crossAxisCount: 2),
           itemBuilder: (context, index) => InkWell(
             onTap: (){
+              // ignore: avoid_print
               print(users[index].name);
             },
             child: Card(
