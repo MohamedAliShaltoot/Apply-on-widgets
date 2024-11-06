@@ -79,6 +79,11 @@ class _RollGameState extends State<RollGame> {
                 height: 10,
               ),
               ElevatedButton(
+                style: ButtonStyle(
+                  elevation: MaterialStateProperty.all(50),
+                  backgroundColor: MaterialStateProperty.all(Colors.amber),
+                shadowColor:  MaterialStateProperty.all(const Color.fromARGB(255, 37, 28, 1)),
+                ),
                   onPressed: () {
                     setRollDice();
                   },
