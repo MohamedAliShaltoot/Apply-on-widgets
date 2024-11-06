@@ -14,14 +14,17 @@ class _ScreensState extends State<Screens> {
   Widget build(BuildContext context) {
     return Scaffold(
       bottomNavigationBar: BottomNavigationBar(
+        currentIndex: index,
           onTap: (value) {
             setState(() {
               index=value;
             });
           },
-          type: BottomNavigationBarType.fixed,
+          type: BottomNavigationBarType.shifting,
+          selectedItemColor: Colors.amber,
+          unselectedItemColor: Colors.blue,
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home",tooltip: "you are standing on home page"),
             BottomNavigationBarItem(
                 icon: Icon(Icons.shopping_basket), label: "shopping_basket"),
             BottomNavigationBarItem(
