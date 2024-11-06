@@ -6,11 +6,11 @@ class PagesViewScreen extends StatelessWidget {
    final PageController _pagecontroller = PageController(initialPage: 0);
 List<Container> containers=[
   
-  Container(color: Colors.amber,),
-    Container(color: const Color.fromARGB(255, 50, 198, 4),),
-      Container(color: const Color.fromARGB(255, 243, 67, 3),),
-        Container(color: const Color.fromARGB(255, 205, 10, 101),),
-          Container(color: const Color.fromARGB(255, 78, 3, 164),),
+  Container(color: Colors.amber,child: Center(child: Text("Screen 1")),),
+    Container(color: const Color.fromARGB(255, 50, 198, 4),child: Center(child: Text("Screen 2")),),
+      Container(color: const Color.fromARGB(255, 243, 67, 3),child: Center(child: Text("Screen 3")),),
+        Container(color: const Color.fromARGB(255, 205, 10, 101),child: Center(child: Text("Screen 4")),),
+          Container(color: const Color.fromARGB(255, 78, 3, 164),child: Center(child: Text("Screen 5")),),
 
 ];
   @override
