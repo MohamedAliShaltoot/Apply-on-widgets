@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_2/bottomnavigationbar.dart';
 import 'package:flutter_application_2/home_screen2.dart';
+import 'package:flutter_application_2/pageview.dart';
 import 'package:flutter_application_2/tabbar.dart';
 //import 'package:flutter_application_2/db/db_helper.dart';
 
@@ -29,7 +30,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       // home:  HomeScreen(),
-      home:  const Screens(),
+      home: PagesViewScreen(),
 
     );
   }
