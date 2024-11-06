@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_2/home_screen2.dart';
+import 'package:flutter_application_2/tabbar.dart';
+//import 'package:flutter_application_2/db/db_helper.dart';
 
-import 'package:flutter_application_2/home_screen3.dart';
 
-void main() {
+void main() async{
+
+  //DbHelper helper = DbHelper();
+// DbHelper.helper.getPath();
+
+
   runApp(const MyApp());
 }
 
@@ -21,7 +28,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       // home:  HomeScreen(),
-      home: const MyhomePage3(),
+      home:  const TabBarScreen(),
 
     );
   }
