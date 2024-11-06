@@ -36,7 +36,7 @@ class _RollGameState extends State<RollGame> {
               ),
               Text(" Sum = $result"),
               const SizedBox(
-                height: 200,
+                height: 100,
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -71,7 +71,12 @@ class _RollGameState extends State<RollGame> {
               //         ),
 
               const SizedBox(
-                height: 200,
+                height: 100,
+              ),
+             number1==number2? const Text("You Win ",
+          style: TextStyle(color: Color.fromARGB(255, 207, 21, 21), fontStyle: FontStyle.italic)):const Text(""),
+          const SizedBox(
+                height: 10,
               ),
               ElevatedButton(
                   onPressed: () {
