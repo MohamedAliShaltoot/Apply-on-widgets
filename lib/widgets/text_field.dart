@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_const_constructors
+
 import 'package:flutter/material.dart';
 
 class TextFieldWidget extends StatefulWidget {
@@ -10,6 +12,16 @@ class TextFieldWidget extends StatefulWidget {
 class _TextFieldWidgetState extends State<TextFieldWidget> {
   @override
   Widget build(BuildContext context) {
-    return const Placeholder();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("TextField Widget"),
+      ),
+      body: Center(child: TextField(
+        decoration: InputDecoration(
+          border: OutlineInputBorder(),
+          hintText: "Enter Your Name"
+        ),
+      )),
+    );
   }
 }

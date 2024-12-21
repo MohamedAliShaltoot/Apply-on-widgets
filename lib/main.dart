@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 
 import 'widgets/home_screen.dart';
+import 'widgets/text_field.dart';
 
 //import 'package:flutter_application_2/db/db_helper.dart';
 
@@ -30,7 +31,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       // home:  HomeScreen(),
-      home:  HomeScreen(),
+      home:  const TextFieldWidget (),
 
     );
   }
