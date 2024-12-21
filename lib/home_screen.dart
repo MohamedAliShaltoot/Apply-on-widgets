@@ -5,6 +5,7 @@ import 'package:flutter_application_2/user.dart';
 import 'package:flutter_application_2/utils/context_extension.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+// ignore: must_be_immutable
 class HomeScreen extends StatelessWidget {
    HomeScreen({super.key});
 
