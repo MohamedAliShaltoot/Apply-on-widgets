@@ -21,6 +21,8 @@ class TextFormFieldWidget extends StatelessWidget {
                if(value!.isEmpty){
                  return "Please Enter Name";
                  
+               } else if(value.length<=6){
+return "you must enter 7 characters at least ";
                }
                return null;
              },
