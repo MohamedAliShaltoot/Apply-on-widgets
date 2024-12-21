@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_2/widgets/text_form_field.dart';
 
 
 import 'widgets/home_screen.dart';
@@ -31,7 +32,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       // home:  HomeScreen(),
-      home:  const TextFieldWidget (),
+      home:  const TextFormFieldWidget (),
 
     );
   }
