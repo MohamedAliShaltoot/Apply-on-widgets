@@ -12,7 +12,10 @@ class TextFormFieldWidget extends StatelessWidget {
       appBar: AppBar(
         title: const Text("TextFormField Widget"),
         actions: [
-          PopupMenuButton(itemBuilder: (context) {
+          PopupMenuButton(
+          // ignore: avoid_print
+          onSelected: (value) => print(value),
+            itemBuilder: (context) {
             return [
               const PopupMenuItem(child: Text("Home"),value: 1,),
               const PopupMenuItem(child: Text("About"),value: 2,),
