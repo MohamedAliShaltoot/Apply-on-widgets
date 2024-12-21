@@ -11,6 +11,15 @@ class TextFormFieldWidget extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("TextFormField Widget"),
+        actions: [
+          PopupMenuButton(itemBuilder: (context) {
+            return [
+              const PopupMenuItem(child: Text("Home"),value: 1,),
+              const PopupMenuItem(child: Text("About"),value: 2,),
+              const PopupMenuItem(child: Text("Contact"),value: 3,),
+            ];
+          })
+        ],
       ),
       body: Form(
         key: formKey,
