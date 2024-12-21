@@ -7,6 +7,7 @@ class TextFormFieldWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    String? username;
     return Scaffold(
       appBar: AppBar(
         title: const Text("TextFormField Widget"),
@@ -16,6 +17,10 @@ class TextFormFieldWidget extends StatelessWidget {
         child: Column(
           children: [
              TextFormField(
+              autovalidateMode: AutovalidateMode.onUnfocus,
+              onSaved: (newValue) {
+                username=newValue;
+              },
               decoration: const InputDecoration(hintText: "Enter Your Name",labelText: "Enter Your Name",border: OutlineInputBorder()),
              validator: (value){
                if(value!.isEmpty){
@@ -29,6 +34,7 @@ return "you must enter 7 characters at least ";
             ),
             ElevatedButton(onPressed: () {
               if(formKey.currentState!.validate()){
+                formKey.currentState!.save(); // to save the value in username string 
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Form is Valid")));
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const TextFieldWidget(),));
               }
