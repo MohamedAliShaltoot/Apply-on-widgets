@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_2/home_screen.dart';
+
+
+import 'widgets/home_screen.dart';
 
 //import 'package:flutter_application_2/db/db_helper.dart';
 
