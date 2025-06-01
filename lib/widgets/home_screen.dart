@@ -6,8 +6,8 @@ import 'package:flutter_application_2/utils/context_extension.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // ignore: must_be_immutable
-class HomeScreen extends StatelessWidget {
-   HomeScreen({super.key});
+class HomeScreen33 extends StatelessWidget {
+   HomeScreen33({super.key});
 
 List<User> users=[
 User('mo@gmail.com', 'mohamed', '0123456788', 'software testing','https://www.google.com/imgres?q=person%20image%20icon%20jpg&imgurl=https%3A%2F%2Fcdn-icons-png.flaticon.com%2F512%2F4202%2F4202841.png'),
@@ -99,6 +99,7 @@ _callUser(String phone) async {
 Uri uri = Uri.parse('tel:+$phone');
 if (await canLaunchUrl(uri)) {
 launchUrl(uri);
+
 }
 }catch (e){
 
