@@ -10,7 +10,7 @@ class HomeScreen33 extends StatelessWidget {
    HomeScreen33({super.key});
 
 List<User> users=[
-User('mo@gmail.com', 'mohamed', '0123456788', 'software testing','https://www.google.com/imgres?q=person%20image%20icon%20jpg&imgurl=https%3A%2F%2Fcdn-icons-png.flaticon.com%2F512%2F4202%2F4202841.png'),
+User('Mohamed Ali@gmail.com', 'mohamed', '01221934874', 'Flutter developer','images/me.jpg'),
 User('noha@gmail.com', 'noha', '0123720988', 'Graphic designer','https://thumb.ac-illust.com/be/bee98c70d1cfc02d0f387d2852464bf5_t.jpeg'),
 User('magdi@gmail.com', 'magdi', '08432222788', 'drawer','https://www.iconpacks.net/icons/1/free-user-icon-295-thumb.png'),
 User('hema@gmail.com', 'hema', '32345455588', 'backer','https://www.google.com/imgres?q=person%20image%20icon%20jpg&imgurl=https%3A%2F%2Fst2.depositphotos.com%2F3369547%2F11481%2Fv%2F950%2Fdepositphotos_114817672-stock-illustration-avatar-man-icon-businesspeople-design.jpg'),

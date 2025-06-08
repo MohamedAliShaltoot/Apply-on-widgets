@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_2/new_project/features/home_screen/views/home_view.dart';
 import 'package:flutter_application_2/screens/home_2.dart';
 import 'package:flutter_application_2/screens/test_home.dart';
 
@@ -28,7 +29,7 @@ class MyApp extends StatelessWidget {
         ),
         // home:  HomeScreen(),
         // ignore: prefer_const_constructors
-        home: Home()
+        home: HomeView()
 
         //const TextFormFieldWidget (),
 
