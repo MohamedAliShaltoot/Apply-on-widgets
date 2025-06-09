@@ -36,11 +36,19 @@
 //         );
 //   }
 // }
-
+import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/rendering.dart'; // For RepaintBoundary
 import 'dart:ui' as ui; // Explicitly import dart:ui with alias for clarity
+import 'dart:io'; // For file operations
+import 'dart:convert'; // For JSON encoding/decoding
+
+import 'package:path_provider/path_provider.dart'; // For getting app directories
+import 'package:image/image.dart' as img; // For image encoding
+import 'package:image_gallery_saver/image_gallery_saver.dart'; // For saving to gallery
+import 'package:permission_handler/permission_handler.dart'; // For permissions
 
 void main() {
   runApp(const MyDrawingApp());
@@ -64,16 +72,15 @@ enum BackgroundType {
 enum ToolType { pencil, eraser, line, rectangle, circle, text }
 
 class DrawnObject {
-  final List<Offset?>
-      points; // Points defining the drawing (e.g., path for pencil, start/end for shapes)
+  final List<Offset?> points;
   final Color color;
   final double width;
   final ToolType tool;
-  final String? text; // For text tool
+  final String? text;
   final Color? backgroundColor; // Needed for eraser blend mode
 
-  // For text rendering optimization
-  TextPainter? _textPainter;
+  // For text rendering optimization - cached TextPainter
+  late final TextPainter _textPainter; // Marked as late final
 
   DrawnObject({
     required this.points,
@@ -87,30 +94,71 @@ class DrawnObject {
         text != null &&
         points.isNotEmpty &&
         points[0] != null) {
-      _initTextPainter();
+      _textPainter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            color: color,
+            fontSize: width * 2 < 16 ? 16 : width * 2, // Min font size
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      _textPainter.layout(); // Layout text immediately when created
     }
   }
 
-  // Initialize TextPainter once
-  void _initTextPainter() {
-    _textPainter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: width * 2 < 16 ? 16 : width * 2, // Min font size
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-    _textPainter!.layout(); // Layout text immediately
-  }
-
-  // Get the initialized TextPainter
-  TextPainter? get textPainter => _textPainter;
+  // Get the initialized TextPainter (nullable for non-text objects)
+  TextPainter? get textPainter =>
+      (tool == ToolType.text && text != null) ? _textPainter : null;
 
   // Helper for erasing functionality
   bool get isErasing => tool == ToolType.eraser;
+
+  // --- Serialization Methods ---
+  factory DrawnObject.fromJson(Map<String, dynamic> json) {
+    // Deserialize points
+    List<Offset?> points = (json['points'] as List)
+        .map((p) =>
+            p == null ? null : Offset(p['dx'] as double, p['dy'] as double))
+        .toList();
+
+    // Deserialize color (from int)
+    Color color = Color(json['color'] as int);
+
+    // Deserialize tool (from string)
+    ToolType tool = ToolType.values
+        .firstWhere((e) => e.toString() == 'ToolType.${json['tool']}');
+
+    // Deserialize background color (nullable int)
+    Color? backgroundColor = json['backgroundColor'] != null
+        ? Color(json['backgroundColor'] as int)
+        : null;
+
+    return DrawnObject(
+      points: points,
+      color: color,
+      width: json['width'] as double,
+      tool: tool,
+      text: json['text'] as String?,
+      backgroundColor: backgroundColor,
+    );
+  }
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'points': points
+          .map((p) => p == null ? null : {'dx': p.dx, 'dy': p.dy})
+          .toList(),
+      'color': color.value, // Store Color as int
+      'width': width,
+      'tool': tool.toString().split('.').last, // Store enum as String
+      'text': text,
+      'backgroundColor':
+          backgroundColor?.value, // Store Color as int (nullable)
+    };
+  }
 }
 
 // ===========================================================================
@@ -164,6 +212,11 @@ class DrawingPage extends StatefulWidget {
 }
 
 class _DrawingPageState extends State<DrawingPage> {
+  // Undo/Redo Stacks
+  List<List<DrawnObject>> _undoStack = [];
+  List<List<DrawnObject>> _redoStack = [];
+  final int _maxUndoRedoStates = 50; // Limit memory usage
+
   List<DrawnObject> completedObjects = [];
   DrawnObject? currentDrawing;
   Offset? shapeStartPoint;
@@ -178,7 +231,9 @@ class _DrawingPageState extends State<DrawingPage> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _textFocusNode = FocusNode();
 
-  // Expanded Color Palette
+  // GlobalKey for capturing the CustomPaint as an image
+  final GlobalKey _repaintBoundaryKey = GlobalKey();
+
   final List<Color> paletteColors = [
     Colors.black,
     Colors.white,
@@ -209,10 +264,70 @@ class _DrawingPageState extends State<DrawingPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _saveStateForUndo(); // Save initial empty state for undo
+  }
+
+  @override
   void dispose() {
     _textController.dispose();
     _textFocusNode.dispose();
     super.dispose();
+  }
+
+  // --- Undo/Redo Logic ---
+
+  void _saveStateForUndo() {
+    // Only save if the state has actually changed from the last saved state
+    if (_undoStack.isNotEmpty &&
+        _listEquals(completedObjects, _undoStack.last)) {
+      return; // State hasn't changed, no need to save
+    }
+
+    _undoStack.add(List.from(completedObjects)); // Deep copy the list
+    if (_undoStack.length > _maxUndoRedoStates) {
+      _undoStack.removeAt(0); // Remove the oldest state
+    }
+    _redoStack.clear(); // Any new action clears the redo stack
+  }
+
+  bool _listEquals(List<DrawnObject> a, List<DrawnObject> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      // For simplicity, we just compare references.
+      // A more robust equality check would compare content of DrawnObject.
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  void _undo() {
+    if (_undoStack.length > 1) {
+      setState(() {
+        _redoStack.add(_undoStack.removeLast()); // Move current state to redo
+        completedObjects =
+            List.from(_undoStack.last); // Revert to previous state
+        currentDrawing = null; // Clear any active drawing
+        shapeStartPoint = null;
+      });
+    } else {
+      _showSnackbar('Nothing to undo.');
+    }
+  }
+
+  void _redo() {
+    if (_redoStack.isNotEmpty) {
+      setState(() {
+        final stateToRedo = _redoStack.removeLast();
+        _undoStack.add(stateToRedo);
+        completedObjects = List.from(stateToRedo);
+        currentDrawing = null;
+        shapeStartPoint = null;
+      });
+    } else {
+      _showSnackbar('Nothing to redo.');
+    }
   }
 
   // --- Gesture Handlers ---
@@ -254,6 +369,7 @@ class _DrawingPageState extends State<DrawingPage> {
           completedObjects.add(currentDrawing!);
           currentDrawing = null;
         });
+        _saveStateForUndo(); // Save state after a continuous drawing is finished
       }
     } else if (shapeStartPoint != null) {
       final List<Offset?> points = [shapeStartPoint!, position];
@@ -266,6 +382,7 @@ class _DrawingPageState extends State<DrawingPage> {
         ));
         shapeStartPoint = null;
       });
+      _saveStateForUndo(); // Save state after a shape is finished
     }
     currentDrawing = null;
     shapeStartPoint = null;
@@ -280,8 +397,9 @@ class _DrawingPageState extends State<DrawingPage> {
   void _onTapUp(Offset position) {
     if (selectedTool == ToolType.text && shapeStartPoint != null) {
       _showTextInputDialog(shapeStartPoint!);
-      shapeStartPoint = null;
+      // _saveStateForUndo() called after text is added in _showTextInputDialog's setState
     }
+    shapeStartPoint = null;
   }
 
   // --- UI Action Methods ---
@@ -299,8 +417,7 @@ class _DrawingPageState extends State<DrawingPage> {
             decoration: const InputDecoration(hintText: "Type here"),
             autofocus: true,
             maxLines: null,
-            textCapitalization: TextCapitalization
-                .sentences, // Capitalize first letter of sentences
+            textCapitalization: TextCapitalization.sentences,
           ),
           actions: <Widget>[
             TextButton(
@@ -330,24 +447,198 @@ class _DrawingPageState extends State<DrawingPage> {
           text: text,
         ));
       });
+      _saveStateForUndo(); // Save state after text is added
     }
     _textFocusNode.unfocus();
   }
 
-  void _undo() {
+  void _clearCanvas() {
     if (completedObjects.isNotEmpty) {
       setState(() {
-        completedObjects.removeLast();
+        completedObjects.clear();
+        currentDrawing = null;
+        shapeStartPoint = null;
       });
+      _saveStateForUndo(); // Save state after clearing canvas
+    } else {
+      _showSnackbar('Canvas is already empty.');
     }
   }
 
-  void _clearCanvas() {
-    setState(() {
-      completedObjects.clear();
-      currentDrawing = null;
-      shapeStartPoint = null;
-    });
+  // --- Save/Load/Export Methods ---
+
+  Future<String?> _getDrawingsDirectory() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final drawingsDir = Directory('${directory.path}/drawings');
+    if (!await drawingsDir.exists()) {
+      await drawingsDir.create(recursive: true);
+    }
+    return drawingsDir.path;
+  }
+
+  Future<void> _saveDrawing() async {
+    String? dirPath = await _getDrawingsDirectory();
+    if (dirPath == null) {
+      _showSnackbar('Could not find directory to save.');
+      return;
+    }
+
+    String? filename = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        TextEditingController filenameController = TextEditingController();
+        return AlertDialog(
+          title: const Text('Save Drawing'),
+          content: TextField(
+            controller: filenameController,
+            decoration: const InputDecoration(
+                hintText: 'Enter filename (e.g., my_drawing)'),
+            autofocus: true,
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, filenameController.text.trim());
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (filename != null && filename.isNotEmpty) {
+      try {
+        final file = File('$dirPath/$filename.json');
+        List<Map<String, dynamic>> jsonList =
+            completedObjects.map((obj) => obj.toJson()).toList();
+        await file.writeAsString(jsonEncode(jsonList));
+        _showSnackbar('Drawing "$filename" saved successfully!');
+      } catch (e) {
+        _showSnackbar('Error saving drawing: $e');
+      }
+    }
+  }
+
+  Future<void> _loadDrawing() async {
+    String? dirPath = await _getDrawingsDirectory();
+    if (dirPath == null) {
+      _showSnackbar('Could not find directory to load from.');
+      return;
+    }
+
+    try {
+      final directory = Directory(dirPath);
+      final List<FileSystemEntity> files = directory.listSync().toList();
+      final List<String> drawingFiles = files
+          .where((file) => file.path.endsWith('.json'))
+          .map((file) => file.path
+              .split(Platform.pathSeparator)
+              .last
+              .replaceAll('.json', ''))
+          .toList();
+
+      if (drawingFiles.isEmpty) {
+        _showSnackbar('No saved drawings found.');
+        return;
+      }
+
+      String? selectedFilename = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Load Drawing'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: drawingFiles.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    title: Text(drawingFiles[index]),
+                    onTap: () => Navigator.pop(context, drawingFiles[index]),
+                  );
+                },
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel')),
+            ],
+          );
+        },
+      );
+
+      if (selectedFilename != null && selectedFilename.isNotEmpty) {
+        final file = File('$dirPath/$selectedFilename.json');
+        String jsonString = await file.readAsString();
+        List<dynamic> jsonList = jsonDecode(jsonString);
+        setState(() {
+          completedObjects = jsonList
+              .map((json) => DrawnObject.fromJson(json as Map<String, dynamic>))
+              .toList();
+          currentDrawing = null;
+          shapeStartPoint = null;
+          _saveStateForUndo(); // Save loaded state for undo
+        });
+        _showSnackbar('Drawing "$selectedFilename" loaded successfully!');
+      }
+    } catch (e) {
+      _showSnackbar('Error loading drawing: $e');
+    }
+  }
+
+  Future<void> _exportDrawingAsImage() async {
+    // Request permissions
+    var status = await Permission.storage.request();
+    if (status != PermissionStatus.granted) {
+      _showSnackbar('Storage permission not granted. Cannot save image.');
+      openAppSettings(); // Open app settings if permission denied
+      return;
+    }
+
+    try {
+      RenderRepaintBoundary? boundary = _repaintBoundaryKey.currentContext
+          ?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        _showSnackbar('Error: Could not find repaint boundary.');
+        return;
+      }
+
+      ui.Image image = await boundary.toImage(
+          pixelRatio: 3.0); // Higher pixelRatio for better quality
+      ByteData? byteData =
+          await image.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) {
+        _showSnackbar('Error: Could not convert image to bytes.');
+        return;
+      }
+
+      final result = await ImageGallerySaver.saveImage(
+        byteData.buffer.asUint8List(),
+        quality: 90,
+        name: "DrawingApp_${DateTime.now().millisecondsSinceEpoch}",
+      );
+
+      if (result['isSuccess']) {
+        _showSnackbar('Image saved to gallery!');
+      } else {
+        _showSnackbar(
+            'Error saving image: ${result['errorMessage'] ?? 'Unknown error'}');
+      }
+    } catch (e) {
+      _showSnackbar('Error exporting image: $e');
+    }
+  }
+
+  void _showSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   // --- UI Builders ---
@@ -414,17 +705,15 @@ class _DrawingPageState extends State<DrawingPage> {
               text = "Horizontal Lines";
               break;
             case BackgroundType.diagonal:
-              icon =
-                  const Icon(Icons.timeline); // More suitable icon for diagonal
+              icon = const Icon(Icons.timeline);
               text = "Diagonal Lines";
               break;
             case BackgroundType.isometric:
-              icon = const Icon(Icons.threed_rotation); // Simple 3D icon
+              icon = const Icon(Icons.threed_rotation);
               text = "Isometric Grid";
               break;
             case BackgroundType.graphPaper:
-              icon = const Icon(
-                  Icons.insert_chart_outlined); // Icon resembling chart lines
+              icon = const Icon(Icons.insert_chart_outlined);
               text = "Graph Paper";
               break;
           }
@@ -450,9 +739,25 @@ class _DrawingPageState extends State<DrawingPage> {
               icon: const Icon(Icons.undo),
               tooltip: 'Undo Last Action'),
           IconButton(
+              onPressed: _redo,
+              icon: const Icon(Icons.redo),
+              tooltip: 'Redo Last Action'), // Redo button
+          IconButton(
               onPressed: _clearCanvas,
               icon: const Icon(Icons.delete),
               tooltip: 'Clear Canvas'),
+          IconButton(
+              onPressed: _saveDrawing,
+              icon: const Icon(Icons.save),
+              tooltip: 'Save Drawing'),
+          IconButton(
+              onPressed: _loadDrawing,
+              icon: const Icon(Icons.folder_open),
+              tooltip: 'Load Drawing'),
+          IconButton(
+              onPressed: _exportDrawingAsImage,
+              icon: const Icon(Icons.image),
+              tooltip: 'Export as Image'),
           IconButton(
             icon: Icon(widget.isDark ? Icons.light_mode : Icons.dark_mode),
             onPressed: widget.onToggleTheme,
@@ -472,31 +777,35 @@ class _DrawingPageState extends State<DrawingPage> {
       body: Column(
         children: [
           Expanded(
-            child: Builder(
-              builder: (canvasContext) => GestureDetector(
-                onPanStart: (details) => _onPanStart(
-                    (canvasContext.findRenderObject() as RenderBox)
-                        .globalToLocal(details.globalPosition)),
-                onPanUpdate: (details) => _onPanUpdate(
-                    (canvasContext.findRenderObject() as RenderBox)
-                        .globalToLocal(details.globalPosition)),
-                onPanEnd: (details) => _onPanEnd(
-                    (canvasContext.findRenderObject() as RenderBox)
-                        .globalToLocal(details.globalPosition)),
-                onTapDown: (details) => _onTapDown(
-                    (canvasContext.findRenderObject() as RenderBox)
-                        .globalToLocal(details.globalPosition)),
-                onTapUp: (details) => _onTapUp(
-                    (canvasContext.findRenderObject() as RenderBox)
-                        .globalToLocal(details.globalPosition)),
-                child: CustomPaint(
-                  painter: DrawingPainter(
-                    completedObjects,
-                    currentDrawing,
-                    backgroundType,
-                    bgColor,
+            child: RepaintBoundary(
+              // Wrap CustomPaint with RepaintBoundary for image export
+              key: _repaintBoundaryKey,
+              child: Builder(
+                builder: (canvasContext) => GestureDetector(
+                  onPanStart: (details) => _onPanStart(
+                      (canvasContext.findRenderObject() as RenderBox)
+                          .globalToLocal(details.globalPosition)),
+                  onPanUpdate: (details) => _onPanUpdate(
+                      (canvasContext.findRenderObject() as RenderBox)
+                          .globalToLocal(details.globalPosition)),
+                  onPanEnd: (details) => _onPanEnd(
+                      (canvasContext.findRenderObject() as RenderBox)
+                          .globalToLocal(details.globalPosition)),
+                  onTapDown: (details) => _onTapDown(
+                      (canvasContext.findRenderObject() as RenderBox)
+                          .globalToLocal(details.globalPosition)),
+                  onTapUp: (details) => _onTapUp(
+                      (canvasContext.findRenderObject() as RenderBox)
+                          .globalToLocal(details.globalPosition)),
+                  child: CustomPaint(
+                    painter: DrawingPainter(
+                      completedObjects,
+                      currentDrawing,
+                      backgroundType,
+                      bgColor,
+                    ),
+                    size: Size.infinite,
                   ),
-                  size: Size.infinite,
                 ),
               ),
             ),
@@ -649,6 +958,7 @@ class DrawingPainter extends CustomPainter {
         }
         break;
       case ToolType.text:
+        // Use the cached TextPainter
         if (obj.textPainter != null &&
             obj.points.isNotEmpty &&
             obj.points[0] != null) {
@@ -660,7 +970,7 @@ class DrawingPainter extends CustomPainter {
 
   void _drawBackgroundGrid(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.grey.withOpacity(0.3)
+      ..color = const Color.fromARGB(255, 198, 9, 100).withOpacity(0.3)
       ..strokeWidth = 1;
 
     const spacing = 20.0;
@@ -700,20 +1010,24 @@ class DrawingPainter extends CustomPainter {
         }
         break;
       case BackgroundType.isometric:
-        // Horizontal lines
+        // Horizontal lines (30-degree up)
         for (double y = 0; y <= size.height; y += spacing * 0.866) {
-          // sin(60)
+          // sin(60) for vertical distance
           canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
         }
-        // Diagonal lines (30 degrees)
+        // Diagonal lines (30 degrees from horizontal)
         for (double x = -size.height / 0.577;
             x <= size.width + size.height / 0.577;
             x += spacing / 0.577) {
-          // tan(30)
-          canvas.drawLine(Offset(x, 0),
-              Offset(x + size.height / 0.577, size.height), paint);
+          // tan(30) for spacing
+          // Line 1: top-left to bottom-right
+          canvas.drawLine(
+              Offset(x, 0),
+              Offset(x + size.height * 1.732, size.height),
+              paint); // ~height * cot(30)
+          // Line 2: bottom-left to top-right
           canvas.drawLine(Offset(x, size.height),
-              Offset(x + size.height / 0.577, 0), paint);
+              Offset(x + size.height * 1.732, 0), paint);
         }
         break;
       case BackgroundType.graphPaper:
@@ -758,6 +1072,10 @@ class DrawingPainter extends CustomPainter {
             oldDelegate.currentDrawing!.points.length) {
       return true;
     }
+    // Deep equality check for text changes to force repaint if text content changes (unlikely for existing objects)
+    // For general changes in completedObjects, a reference comparison (via list equality) is sufficient if objects are immutable.
+    // However, DrawnObject is mutable (its points list).
+    // A full deep comparison can be costly, but the above length checks cover most cases.
     return false;
   }
 }
@@ -772,3 +1090,4 @@ extension StringCasingExtension on String {
     return this[0].toUpperCase() + substring(1);
   }
 }
+
