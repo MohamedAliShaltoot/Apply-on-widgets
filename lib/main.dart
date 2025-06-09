@@ -37,7 +37,7 @@
 //   }
 // }
 import 'dart:typed_data';
-import 'dart:ui';
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'; // For RepaintBoundary
@@ -46,9 +46,11 @@ import 'dart:io'; // For file operations
 import 'dart:convert'; // For JSON encoding/decoding
 
 import 'package:path_provider/path_provider.dart'; // For getting app directories
-import 'package:image/image.dart' as img; // For image encoding
+
 import 'package:image_gallery_saver/image_gallery_saver.dart'; // For saving to gallery
 import 'package:permission_handler/permission_handler.dart'; // For permissions
+
+
 
 void main() {
   runApp(const MyDrawingApp());
@@ -58,15 +60,12 @@ void main() {
 // DATA MODELS & ENUMS
 // ===========================================================================
 
-// Expanded BackgroundType options
+// Updated BackgroundType options (removed harmful ones)
 enum BackgroundType {
   none,
   grid, // Square grid
   dotted,
   lines, // Horizontal lines
-  diagonal, // 45-degree lines
-  isometric, // Isometric grid
-  graphPaper, // Finer grid with bolder major lines
 }
 
 enum ToolType { pencil, eraser, line, rectangle, circle, text }
@@ -77,10 +76,9 @@ class DrawnObject {
   final double width;
   final ToolType tool;
   final String? text;
-  final Color? backgroundColor; // Needed for eraser blend mode
+  final Color? backgroundColor;
 
-  // For text rendering optimization - cached TextPainter
-  late final TextPainter _textPainter; // Marked as late final
+  late final TextPainter _textPainter;
 
   DrawnObject({
     required this.points,
@@ -99,38 +97,28 @@ class DrawnObject {
           text: text,
           style: TextStyle(
             color: color,
-            fontSize: width * 2 < 16 ? 16 : width * 2, // Min font size
+            fontSize: width * 2 < 16 ? 16 : width * 2,
           ),
         ),
         textDirection: TextDirection.ltr,
       );
-      _textPainter.layout(); // Layout text immediately when created
+      _textPainter.layout();
     }
   }
 
-  // Get the initialized TextPainter (nullable for non-text objects)
   TextPainter? get textPainter =>
       (tool == ToolType.text && text != null) ? _textPainter : null;
-
-  // Helper for erasing functionality
   bool get isErasing => tool == ToolType.eraser;
 
   // --- Serialization Methods ---
   factory DrawnObject.fromJson(Map<String, dynamic> json) {
-    // Deserialize points
     List<Offset?> points = (json['points'] as List)
         .map((p) =>
             p == null ? null : Offset(p['dx'] as double, p['dy'] as double))
         .toList();
-
-    // Deserialize color (from int)
     Color color = Color(json['color'] as int);
-
-    // Deserialize tool (from string)
     ToolType tool = ToolType.values
         .firstWhere((e) => e.toString() == 'ToolType.${json['tool']}');
-
-    // Deserialize background color (nullable int)
     Color? backgroundColor = json['backgroundColor'] != null
         ? Color(json['backgroundColor'] as int)
         : null;
@@ -145,18 +133,16 @@ class DrawnObject {
     );
   }
 
-  // Convert to JSON
   Map<String, dynamic> toJson() {
     return {
       'points': points
           .map((p) => p == null ? null : {'dx': p.dx, 'dy': p.dy})
           .toList(),
-      'color': color.value, // Store Color as int
+      'color': color.value,
       'width': width,
-      'tool': tool.toString().split('.').last, // Store enum as String
+      'tool': tool.toString().split('.').last,
       'text': text,
-      'backgroundColor':
-          backgroundColor?.value, // Store Color as int (nullable)
+      'backgroundColor': backgroundColor?.value,
     };
   }
 }
@@ -215,7 +201,7 @@ class _DrawingPageState extends State<DrawingPage> {
   // Undo/Redo Stacks
   List<List<DrawnObject>> _undoStack = [];
   List<List<DrawnObject>> _redoStack = [];
-  final int _maxUndoRedoStates = 50; // Limit memory usage
+  final int _maxUndoRedoStates = 50;
 
   List<DrawnObject> completedObjects = [];
   DrawnObject? currentDrawing;
@@ -226,12 +212,15 @@ class _DrawingPageState extends State<DrawingPage> {
   BackgroundType backgroundType = BackgroundType.none;
   ToolType selectedTool = ToolType.pencil;
 
+  // New state variables for background customization
+  Color _canvasBackgroundColor = Colors.white; // Default canvas background
+  double _backgroundSpacing = 20.0; // Default spacing for background grid
+
   bool showControls = true;
 
   final TextEditingController _textController = TextEditingController();
   final FocusNode _textFocusNode = FocusNode();
 
-  // GlobalKey for capturing the CustomPaint as an image
   final GlobalKey _repaintBoundaryKey = GlobalKey();
 
   final List<Color> paletteColors = [
@@ -263,10 +252,23 @@ class _DrawingPageState extends State<DrawingPage> {
     Colors.tealAccent,
   ];
 
+  // Palette for background colors
+  final List<Color> backgroundPaletteColors = [
+    Colors.white,
+    Colors.black,
+    Colors.grey.shade200,
+    Colors.blue.shade50,
+    Colors.green.shade50,
+    Colors.red.shade50,
+    Colors.yellow.shade50,
+    Colors.amber.shade50,
+    Colors.purple.shade50,
+  ];
+
   @override
   void initState() {
     super.initState();
-    _saveStateForUndo(); // Save initial empty state for undo
+    _saveStateForUndo();
   }
 
   @override
@@ -280,23 +282,25 @@ class _DrawingPageState extends State<DrawingPage> {
 
   void _saveStateForUndo() {
     // Only save if the state has actually changed from the last saved state
+    // We now create a new list for completedObjects when modified, so reference comparison works here.
     if (_undoStack.isNotEmpty &&
         _listEquals(completedObjects, _undoStack.last)) {
-      return; // State hasn't changed, no need to save
+      return;
     }
 
-    _undoStack.add(List.from(completedObjects)); // Deep copy the list
+    _undoStack.add(List.from(completedObjects));
     if (_undoStack.length > _maxUndoRedoStates) {
-      _undoStack.removeAt(0); // Remove the oldest state
+      _undoStack.removeAt(0);
     }
-    _redoStack.clear(); // Any new action clears the redo stack
+    _redoStack.clear();
   }
 
+  // Helper to compare content of lists for undo/redo
   bool _listEquals(List<DrawnObject> a, List<DrawnObject> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
-      // For simplicity, we just compare references.
-      // A more robust equality check would compare content of DrawnObject.
+      // Since DrawnObject is immutable, comparing references is sufficient here.
+      // If DrawnObject itself had mutable properties, a deep comparison of DrawnObject would be needed.
       if (a[i] != b[i]) return false;
     }
     return true;
@@ -304,11 +308,11 @@ class _DrawingPageState extends State<DrawingPage> {
 
   void _undo() {
     if (_undoStack.length > 1) {
+      // Need at least 2 states to undo (current + previous)
       setState(() {
-        _redoStack.add(_undoStack.removeLast()); // Move current state to redo
-        completedObjects =
-            List.from(_undoStack.last); // Revert to previous state
-        currentDrawing = null; // Clear any active drawing
+        _redoStack.add(_undoStack.removeLast());
+        completedObjects = List.from(_undoStack.last); // Load previous state
+        currentDrawing = null;
         shapeStartPoint = null;
       });
     } else {
@@ -321,7 +325,7 @@ class _DrawingPageState extends State<DrawingPage> {
       setState(() {
         final stateToRedo = _redoStack.removeLast();
         _undoStack.add(stateToRedo);
-        completedObjects = List.from(stateToRedo);
+        completedObjects = List.from(stateToRedo); // Apply redo state
         currentDrawing = null;
         shapeStartPoint = null;
       });
@@ -345,7 +349,8 @@ class _DrawingPageState extends State<DrawingPage> {
           color: effectiveColor,
           width: effectiveWidth,
           tool: selectedTool,
-          backgroundColor: widget.isDark ? Colors.black : Colors.white,
+          backgroundColor:
+              _canvasBackgroundColor, // Pass actual background color for eraser
         );
       });
     } else {
@@ -366,23 +371,26 @@ class _DrawingPageState extends State<DrawingPage> {
     if (selectedTool == ToolType.pencil || selectedTool == ToolType.eraser) {
       if (currentDrawing != null) {
         setState(() {
-          completedObjects.add(currentDrawing!);
+          completedObjects = List.from(completedObjects)
+            ..add(currentDrawing!); // Create new list instance
           currentDrawing = null;
         });
-        _saveStateForUndo(); // Save state after a continuous drawing is finished
+        _saveStateForUndo();
       }
     } else if (shapeStartPoint != null) {
       final List<Offset?> points = [shapeStartPoint!, position];
       setState(() {
-        completedObjects.add(DrawnObject(
-          points: points,
-          color: selectedColor,
-          width: strokeWidth,
-          tool: selectedTool,
-        ));
+        completedObjects = List.from(completedObjects)
+          ..add(DrawnObject(
+            // Create new list instance
+            points: points,
+            color: selectedColor,
+            width: strokeWidth,
+            tool: selectedTool,
+          ));
         shapeStartPoint = null;
       });
-      _saveStateForUndo(); // Save state after a shape is finished
+      _saveStateForUndo();
     }
     currentDrawing = null;
     shapeStartPoint = null;
@@ -397,7 +405,6 @@ class _DrawingPageState extends State<DrawingPage> {
   void _onTapUp(Offset position) {
     if (selectedTool == ToolType.text && shapeStartPoint != null) {
       _showTextInputDialog(shapeStartPoint!);
-      // _saveStateForUndo() called after text is added in _showTextInputDialog's setState
     }
     shapeStartPoint = null;
   }
@@ -421,16 +428,13 @@ class _DrawingPageState extends State<DrawingPage> {
           ),
           actions: <Widget>[
             TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.pop(context);
-              },
-            ),
+                child: const Text('Cancel'),
+                onPressed: () => Navigator.pop(context)),
             TextButton(
-              child: const Text('Add'),
               onPressed: () {
                 Navigator.pop(context, _textController.text);
               },
+              child: const Text('Add'),
             ),
           ],
         );
@@ -439,15 +443,17 @@ class _DrawingPageState extends State<DrawingPage> {
 
     if (text != null && text.isNotEmpty) {
       setState(() {
-        completedObjects.add(DrawnObject(
-          points: [position],
-          color: selectedColor,
-          width: strokeWidth,
-          tool: ToolType.text,
-          text: text,
-        ));
+        completedObjects = List.from(completedObjects)
+          ..add(DrawnObject(
+            // Create new list instance
+            points: [position],
+            color: selectedColor,
+            width: strokeWidth,
+            tool: ToolType.text,
+            text: text,
+          ));
       });
-      _saveStateForUndo(); // Save state after text is added
+      _saveStateForUndo();
     }
     _textFocusNode.unfocus();
   }
@@ -455,11 +461,11 @@ class _DrawingPageState extends State<DrawingPage> {
   void _clearCanvas() {
     if (completedObjects.isNotEmpty) {
       setState(() {
-        completedObjects.clear();
+        completedObjects = []; // Assign a new empty list instance
         currentDrawing = null;
         shapeStartPoint = null;
       });
-      _saveStateForUndo(); // Save state after clearing canvas
+      _saveStateForUndo();
     } else {
       _showSnackbar('Canvas is already empty.');
     }
@@ -593,11 +599,10 @@ class _DrawingPageState extends State<DrawingPage> {
   }
 
   Future<void> _exportDrawingAsImage() async {
-    // Request permissions
     var status = await Permission.storage.request();
     if (status != PermissionStatus.granted) {
       _showSnackbar('Storage permission not granted. Cannot save image.');
-      openAppSettings(); // Open app settings if permission denied
+      openAppSettings();
       return;
     }
 
@@ -609,10 +614,9 @@ class _DrawingPageState extends State<DrawingPage> {
         return;
       }
 
-      ui.Image image = await boundary.toImage(
-          pixelRatio: 3.0); // Higher pixelRatio for better quality
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
       ByteData? byteData =
-          await image.toByteData(format: ImageByteFormat.png);
+          await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) {
         _showSnackbar('Error: Could not convert image to bytes.');
         return;
@@ -677,6 +681,39 @@ class _DrawingPageState extends State<DrawingPage> {
         ),
       );
 
+  Widget _buildBackgroundPalette() => SizedBox(
+        height: 40,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: backgroundPaletteColors.length,
+          itemBuilder: (context, index) => GestureDetector(
+            onTap: () {
+              setState(() {
+                _canvasBackgroundColor = backgroundPaletteColors[index];
+              });
+            },
+            child: Container(
+              width: 32,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: backgroundPaletteColors[index],
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color:
+                      _canvasBackgroundColor == backgroundPaletteColors[index]
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.4),
+                  width: 2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
   Widget _buildBackgroundDropdown() => DropdownButton<BackgroundType>(
         value: backgroundType,
         onChanged: (value) {
@@ -704,18 +741,6 @@ class _DrawingPageState extends State<DrawingPage> {
               icon = const Icon(Icons.line_weight);
               text = "Horizontal Lines";
               break;
-            case BackgroundType.diagonal:
-              icon = const Icon(Icons.timeline);
-              text = "Diagonal Lines";
-              break;
-            case BackgroundType.isometric:
-              icon = const Icon(Icons.threed_rotation);
-              text = "Isometric Grid";
-              break;
-            case BackgroundType.graphPaper:
-              icon = const Icon(Icons.insert_chart_outlined);
-              text = "Graph Paper";
-              break;
           }
           return DropdownMenuItem(
             value: bg,
@@ -728,8 +753,6 @@ class _DrawingPageState extends State<DrawingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = widget.isDark ? Colors.black : Colors.white;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Flutter Drawing App'),
@@ -741,7 +764,7 @@ class _DrawingPageState extends State<DrawingPage> {
           IconButton(
               onPressed: _redo,
               icon: const Icon(Icons.redo),
-              tooltip: 'Redo Last Action'), // Redo button
+              tooltip: 'Redo Last Action'),
           IconButton(
               onPressed: _clearCanvas,
               icon: const Icon(Icons.delete),
@@ -778,7 +801,6 @@ class _DrawingPageState extends State<DrawingPage> {
         children: [
           Expanded(
             child: RepaintBoundary(
-              // Wrap CustomPaint with RepaintBoundary for image export
               key: _repaintBoundaryKey,
               child: Builder(
                 builder: (canvasContext) => GestureDetector(
@@ -802,7 +824,8 @@ class _DrawingPageState extends State<DrawingPage> {
                       completedObjects,
                       currentDrawing,
                       backgroundType,
-                      bgColor,
+                      _canvasBackgroundColor, // Pass selected background color
+                      _backgroundSpacing, // Pass selected background spacing
                     ),
                     size: Size.infinite,
                   ),
@@ -851,6 +874,29 @@ class _DrawingPageState extends State<DrawingPage> {
                         .toList(),
                   ),
                   const SizedBox(height: 8),
+                  // Background color and spacing controls
+                  _buildBackgroundPalette(), // New: Background color palette
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text("BG Spacing: "),
+                      Expanded(
+                        child: Slider(
+                          min: 5,
+                          max: 50,
+                          value: _backgroundSpacing,
+                          onChanged: (value) {
+                            setState(() => _backgroundSpacing = value);
+                          },
+                        ),
+                      ),
+                      Text(_backgroundSpacing.toStringAsFixed(1)),
+                      const SizedBox(width: 16),
+                      const Text("Grid Type: "),
+                      _buildBackgroundDropdown(),
+                    ],
+                  ),
+                  const SizedBox(height: 8), // Add some space below controls
                   Row(
                     children: [
                       const Icon(Icons.line_weight),
@@ -864,10 +910,7 @@ class _DrawingPageState extends State<DrawingPage> {
                           },
                         ),
                       ),
-                      Text(strokeWidth.toStringAsFixed(1)),
-                      const SizedBox(width: 16),
-                      const Text("Background: "),
-                      _buildBackgroundDropdown(),
+                      Text("Stroke: ${strokeWidth.toStringAsFixed(1)}"),
                     ],
                   ),
                 ],
@@ -888,13 +931,15 @@ class DrawingPainter extends CustomPainter {
   final List<DrawnObject> completedObjects;
   final DrawnObject? currentDrawing;
   final BackgroundType backgroundType;
-  final Color backgroundColor;
+  final Color backgroundColor; // Canvas background color
+  final double backgroundSpacing; // Grid/dots spacing
 
   DrawingPainter(
     this.completedObjects,
     this.currentDrawing,
     this.backgroundType,
     this.backgroundColor,
+    this.backgroundSpacing,
   );
 
   @override
@@ -970,83 +1015,30 @@ class DrawingPainter extends CustomPainter {
 
   void _drawBackgroundGrid(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color.fromARGB(255, 198, 9, 100).withOpacity(0.3)
+      ..color = Colors.grey.withOpacity(0.3)
       ..strokeWidth = 1;
 
-    const spacing = 20.0;
-    const majorSpacing = 100.0; // For graph paper
+    final actualSpacing = backgroundSpacing; // Use the controllable spacing
 
     switch (backgroundType) {
       case BackgroundType.grid:
-        for (double x = 0; x <= size.width; x += spacing) {
+        for (double x = 0; x <= size.width; x += actualSpacing) {
           canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
         }
-        for (double y = 0; y <= size.height; y += spacing) {
+        for (double y = 0; y <= size.height; y += actualSpacing) {
           canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
         }
         break;
       case BackgroundType.dotted:
-        for (double x = 0; x <= size.width; x += spacing) {
-          for (double y = 0; y <= size.height; y += spacing) {
+        for (double x = 0; x <= size.width; x += actualSpacing) {
+          for (double y = 0; y <= size.height; y += actualSpacing) {
             canvas.drawCircle(Offset(x, y), 1.5, paint);
           }
         }
         break;
       case BackgroundType.lines:
-        for (double y = 0; y <= size.height; y += spacing) {
+        for (double y = 0; y <= size.height; y += actualSpacing) {
           canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-        }
-        break;
-      case BackgroundType.diagonal:
-        // Draw diagonal lines from bottom-left to top-right
-        for (double x = -size.height; x <= size.width; x += spacing) {
-          canvas.drawLine(
-              Offset(x, size.height), Offset(x + size.height, 0), paint);
-        }
-        // Draw diagonal lines from top-left to bottom-right
-        for (double x = -size.height; x <= size.width; x += spacing) {
-          canvas.drawLine(
-              Offset(x, 0), Offset(x + size.height, size.height), paint);
-        }
-        break;
-      case BackgroundType.isometric:
-        // Horizontal lines (30-degree up)
-        for (double y = 0; y <= size.height; y += spacing * 0.866) {
-          // sin(60) for vertical distance
-          canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-        }
-        // Diagonal lines (30 degrees from horizontal)
-        for (double x = -size.height / 0.577;
-            x <= size.width + size.height / 0.577;
-            x += spacing / 0.577) {
-          // tan(30) for spacing
-          // Line 1: top-left to bottom-right
-          canvas.drawLine(
-              Offset(x, 0),
-              Offset(x + size.height * 1.732, size.height),
-              paint); // ~height * cot(30)
-          // Line 2: bottom-left to top-right
-          canvas.drawLine(Offset(x, size.height),
-              Offset(x + size.height * 1.732, 0), paint);
-        }
-        break;
-      case BackgroundType.graphPaper:
-        // Minor grid lines
-        for (double x = 0; x <= size.width; x += spacing) {
-          canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-        }
-        for (double y = 0; y <= size.height; y += spacing) {
-          canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-        }
-        // Major grid lines
-        final majorPaint = Paint()
-          ..color = Colors.grey.withOpacity(0.5)
-          ..strokeWidth = 1.5;
-        for (double x = 0; x <= size.width; x += majorSpacing) {
-          canvas.drawLine(Offset(x, 0), Offset(x, size.height), majorPaint);
-        }
-        for (double y = 0; y <= size.height; y += majorSpacing) {
-          canvas.drawLine(Offset(0, y), Offset(size.width, y), majorPaint);
         }
         break;
       case BackgroundType.none:
@@ -1056,26 +1048,31 @@ class DrawingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(DrawingPainter oldDelegate) {
+    // These conditions ensure repaint when properties change
     if (oldDelegate.backgroundType != backgroundType ||
-        oldDelegate.backgroundColor != backgroundColor) {
+        oldDelegate.backgroundColor != backgroundColor ||
+        oldDelegate.backgroundSpacing != backgroundSpacing) {
       return true;
     }
-    if (oldDelegate.completedObjects.length != completedObjects.length) {
+
+    // Repaint if the list of completed objects itself has changed (new list instance)
+    if (oldDelegate.completedObjects != completedObjects) {
       return true;
     }
+
+    // Repaint if the current drawing object reference has changed
     if (currentDrawing != oldDelegate.currentDrawing) {
       return true;
     }
+
+    // Repaint if current drawing exists and its points count changed (for continuous drawing)
     if (currentDrawing != null &&
         oldDelegate.currentDrawing != null &&
         currentDrawing!.points.length !=
             oldDelegate.currentDrawing!.points.length) {
       return true;
     }
-    // Deep equality check for text changes to force repaint if text content changes (unlikely for existing objects)
-    // For general changes in completedObjects, a reference comparison (via list equality) is sufficient if objects are immutable.
-    // However, DrawnObject is mutable (its points list).
-    // A full deep comparison can be costly, but the above length checks cover most cases.
+
     return false;
   }
 }
@@ -1090,4 +1087,3 @@ extension StringCasingExtension on String {
     return this[0].toUpperCase() + substring(1);
   }
 }
-
