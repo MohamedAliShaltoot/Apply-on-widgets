@@ -38,7 +38,6 @@
 // }
 import 'dart:typed_data';
 
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'; // For RepaintBoundary
 import 'dart:ui' as ui; // Explicitly import dart:ui with alias for clarity
@@ -49,8 +48,6 @@ import 'package:path_provider/path_provider.dart'; // For getting app directorie
 
 import 'package:image_gallery_saver/image_gallery_saver.dart'; // For saving to gallery
 import 'package:permission_handler/permission_handler.dart'; // For permissions
-
-
 
 void main() {
   runApp(const MyDrawingApp());
@@ -74,6 +71,7 @@ class DrawnObject {
   final List<Offset?> points;
   final Color color;
   final double width;
+  final double? size;
   final ToolType tool;
   final String? text;
   final Color? backgroundColor;
@@ -87,6 +85,7 @@ class DrawnObject {
     required this.tool,
     this.text,
     this.backgroundColor,
+    this.size,
   }) {
     if (tool == ToolType.text &&
         text != null &&
@@ -209,7 +208,7 @@ class _DrawingPageState extends State<DrawingPage> {
 
   Color selectedColor = Colors.black;
   double strokeWidth = 4.0;
-  BackgroundType backgroundType = BackgroundType.none;
+  BackgroundType backgroundType = BackgroundType.dotted;
   ToolType selectedTool = ToolType.pencil;
 
   // New state variables for background customization
@@ -254,15 +253,30 @@ class _DrawingPageState extends State<DrawingPage> {
 
   // Palette for background colors
   final List<Color> backgroundPaletteColors = [
-    Colors.white,
     Colors.black,
-    Colors.grey.shade200,
-    Colors.blue.shade50,
-    Colors.green.shade50,
-    Colors.red.shade50,
-    Colors.yellow.shade50,
-    Colors.amber.shade50,
-    Colors.purple.shade50,
+    Colors.white,
+
+    Colors.yellow,
+    Colors.orange,
+
+    //Colors.pink,
+    Colors.brown,
+
+    Colors.indigo,
+    //Colors.cyan,
+    Colors.amber,
+    //Colors.grey,
+    Colors.lime,
+    //Colors.deepOrange,
+    //Colors.lightBlue,
+    //Colors.deepPurpleAccent,
+    Colors.greenAccent,
+    Colors.redAccent,
+    //Colors.blueAccent,
+    Colors.orangeAccent,
+    //Colors.pinkAccent,
+    Colors.limeAccent,
+    Colors.tealAccent,
   ];
 
   @override
@@ -413,51 +427,156 @@ class _DrawingPageState extends State<DrawingPage> {
 
   void _showTextInputDialog(Offset position) async {
     _textController.clear();
-    final String? text = await showDialog<String>(
+    // Initialize with default values or last used values
+  double  _currentFontSize = 24.0;
+  Color  _currentTextColor = selectedColor; // Or any other default color
+
+    final Map<String, dynamic>? result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Enter Text'),
-          content: TextField(
-            controller: _textController,
-            focusNode: _textFocusNode,
-            decoration: const InputDecoration(hintText: "Type here"),
-            autofocus: true,
-            maxLines: null,
-            textCapitalization: TextCapitalization.sentences,
-          ),
-          actions: <Widget>[
-            TextButton(
-                child: const Text('Cancel'),
-                onPressed: () => Navigator.pop(context)),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, _textController.text);
-              },
-              child: const Text('Add'),
-            ),
-          ],
+        // Using StatefulBuilder to manage the state of color and font size
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              title: const Text('Enter Text'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: _textController,
+                      focusNode: _textFocusNode,
+                      decoration: const InputDecoration(
+                        hintText: "Type here",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(5)),
+                        ),
+                      ),
+                      autofocus: true,
+                      maxLines: null,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: TextStyle(
+                        fontSize: _currentFontSize,
+                        color: _currentTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Font Size Slider
+                    Row(
+                      children: [
+                        const Text('Font Size:'),
+                        Expanded(
+                          child: Slider(
+                            value: _currentFontSize,
+                            min: 10.0,
+                            max: 60.0,
+                            divisions: 50,
+                            label: _currentFontSize.round().toString(),
+                            onChanged: (double value) {
+                              setState(() {
+                                _currentFontSize = value;
+                              });
+                            },
+                          ),
+                        ),
+                        Text(_currentFontSize.round().toString()),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Color Picker (simple example with a few colors)
+                    Row(
+                      children: [
+                        const Text('Text Color:'),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _currentTextColor = Colors.black;
+                            });
+                          },
+                          child: CircleAvatar(
+                            radius: 15,
+                            backgroundColor: Colors.black,
+                            child: _currentTextColor == Colors.black
+                                ? const Icon(Icons.check, color: Colors.white)
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _currentTextColor = Colors.red;
+                            });
+                          },
+                          child: CircleAvatar(
+                            radius: 15,
+                            backgroundColor: Colors.red,
+                            child: _currentTextColor == Colors.red
+                                ? const Icon(Icons.check, color: Colors.white)
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _currentTextColor = const Color.fromARGB(255, 200, 18, 103);
+                            });
+                          },
+                          child: CircleAvatar(
+                            radius: 15,
+                            backgroundColor: const Color.fromARGB(255, 200, 18, 103),
+                            child: _currentTextColor == const Color.fromARGB(255, 200, 18, 103)
+                                ? const Icon(Icons.check, color: Colors.white)
+                                : null,
+                          ),
+                        ),
+                        // Add more color options as needed
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context, {
+                      'text': _textController.text,
+                      'fontSize': _currentFontSize,
+                      'textColor': _currentTextColor,
+                    });
+                  },
+                  child: const Text('Add'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    if (text != null && text.isNotEmpty) {
+    if (result != null && result['text'] != null && result['text'].isNotEmpty) {
       setState(() {
         completedObjects = List.from(completedObjects)
           ..add(DrawnObject(
-            // Create new list instance
             points: [position],
-            color: selectedColor,
-            width: strokeWidth,
+            color: result['textColor'], // Use the selected text color
+            width: strokeWidth, // This might still be used for other tools
             tool: ToolType.text,
-            text: text,
+            text: result['text'],
+            size: result['fontSize'], // Pass the selected font size
           ));
       });
       _saveStateForUndo();
     }
     _textFocusNode.unfocus();
   }
-
   void _clearCanvas() {
     if (completedObjects.isNotEmpty) {
       setState(() {
@@ -759,7 +878,7 @@ class _DrawingPageState extends State<DrawingPage> {
         actions: [
           IconButton(
               onPressed: _undo,
-              icon: const Icon(Icons.undo),
+              icon: const Icon(Icons.undo_sharp),
               tooltip: 'Undo Last Action'),
           IconButton(
               onPressed: _redo,
@@ -767,27 +886,28 @@ class _DrawingPageState extends State<DrawingPage> {
               tooltip: 'Redo Last Action'),
           IconButton(
               onPressed: _clearCanvas,
-              icon: const Icon(Icons.delete),
+              icon: const Icon(Icons.delete_sweep_sharp),
               tooltip: 'Clear Canvas'),
-          IconButton(
-              onPressed: _saveDrawing,
-              icon: const Icon(Icons.save),
-              tooltip: 'Save Drawing'),
-          IconButton(
-              onPressed: _loadDrawing,
-              icon: const Icon(Icons.folder_open),
-              tooltip: 'Load Drawing'),
-          IconButton(
-              onPressed: _exportDrawingAsImage,
-              icon: const Icon(Icons.image),
-              tooltip: 'Export as Image'),
+          // IconButton(
+          //     onPressed: _saveDrawing,
+          //     icon: const Icon(Icons.save),
+          //     tooltip: 'Save Drawing'),
+          // IconButton(
+          //     onPressed: _loadDrawing,
+          //     icon: const Icon(Icons.folder_open),
+          //     tooltip: 'Load Drawing'),
+          // IconButton(
+          //     onPressed: _exportDrawingAsImage,
+          //     icon: const Icon(Icons.image),
+          //     tooltip: 'Export as Image'),
           IconButton(
             icon: Icon(widget.isDark ? Icons.light_mode : Icons.dark_mode),
             onPressed: widget.onToggleTheme,
             tooltip: 'Toggle Theme',
           ),
           IconButton(
-            icon: Icon(showControls ? Icons.visibility_off : Icons.visibility),
+            icon: Icon(
+                showControls ? Icons.visibility_off : Icons.visibility_sharp),
             onPressed: () {
               setState(() {
                 showControls = !showControls;
